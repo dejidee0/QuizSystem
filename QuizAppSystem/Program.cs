@@ -21,8 +21,10 @@ using QuizAppSystem.Repositories.Implementation;
 using QuizAppSystem.Repositories;
 using QuizAppSystem.Repository.Implementation;
 using QuizAppSystem.Repository.Interface;
+using Microsoft.Extensions.Configuration;
 using AutoMapper; // Add this using directive
 using QuizAppSystem.DTOs;
+using Swashbuckle.AspNetCore.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,57 +40,62 @@ builder.Services.AddIdentity<User, IdentityRole>()
     .AddEntityFrameworkStores<QuizAppDbContext>()
     .AddDefaultTokenProviders();
 
+//Configre CORS
+builder.Services.AddCors(p => p.AddPolicy("corspolicy", build =>
+{
+    build.WithOrigins("https://localhost:7126", "https://localhost:3000").AllowAnyMethod().AllowAnyHeader();
+}));
+
 // Configure Identity options
 builder.Services.Configure<IdentityOptions>(options =>
 {
-    // Configure password requirements, lockout settings, etc.
+
 });
 
-// Configure JWT authentication
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Secret"]);
 
-builder.Services.AddAuthentication(options =>
+
+builder.Services.AddAuthentication(x =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
+    x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddJwtBearer(x =>
 {
-    options.RequireHttpsMetadata = false;
-    options.SaveToken = true;
-    options.TokenValidationParameters = new TokenValidationParameters
+    x.RequireHttpsMetadata = false;
+    x.SaveToken = true;
+    x.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["Authentication:ApiSettings:Secret"])),
         ValidateIssuer = false,
-        ValidateAudience = false,
+        ValidateAudience = false
     };
 });
 
-// Configure Swagger/OpenAPI
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddSwaggerGen(option =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "QuizAppSystem", Version = "v1" });
-
-    // Include the JWT bearer token in the Swagger UI
-    var securityScheme = new OpenApiSecurityScheme
+    option.AddSecurityDefinition("QuizApp_BearerAuth", new OpenApiSecurityScheme()
     {
-        Name = "JWT Authentication",
-        Description = "Enter your JWT token in this field",
-        In = ParameterLocation.Header,
+        Name = "Authorization",
         Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
-    };
-
-    c.AddSecurityDefinition("Bearer", securityScheme);
-
-    var securityRequirement = new OpenApiSecurityRequirement
+        In = ParameterLocation.Header,
+        Scheme = "Bearer",
+        Description = "Input a valid token to access this API. \n Enter 'Bearer [token]' in the input below"
+    }); ;
+    option.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { securityScheme, new[] { "Bearer" } }
-    };
-
-    c.AddSecurityRequirement(securityRequirement);
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "QuizApp_BearerAuth"
+                },
+                Scheme = "oauth2",
+                Name = "Bearer",
+                In = ParameterLocation.Header
+            }, new List<string>() }
+    });
 });
 
 // Register IEmailSender
@@ -125,15 +132,16 @@ builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 builder.Services.AddScoped<IParticipantRepository, ParticipantRepository>();
 builder.Services.AddScoped<IAnswerRepository, AnswerRepository>();
 
+builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 //if (app.Environment.IsDevelopment())
 //{
-    app.UseSwagger();
-    app.UseSwaggerUI();
+app.UseSwagger();
+app.UseSwaggerUI();
 //}
-
+app.UseCors("corspolicy");
 app.UseHttpsRedirection();
 
 app.UseRouting();
@@ -152,4 +160,3 @@ app.UseEndpoints(endpoints =>
 });
 
 app.Run();
-

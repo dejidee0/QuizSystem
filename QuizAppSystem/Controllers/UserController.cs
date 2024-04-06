@@ -68,7 +68,7 @@ namespace QuizAppSystem.Controllers
                     await _userManager.AddToRoleAsync(user, model.Role);
 
                     // Generate JWT token
-                    var jwtToken = GenerateJwtToken(user);
+                    var jwtToken = CreateToken(user);
 
                     // Save the token to the database
                     user.JwtToken = jwtToken;
@@ -121,7 +121,7 @@ namespace QuizAppSystem.Controllers
 
                     // Generate and return JWT token
                     var user = await _userManager.FindByEmailAsync(model.Email);
-                    var token = GenerateJwtToken(user);
+                    var token = CreateToken(user);
 
                     return Ok(new { token });
                 }
@@ -138,29 +138,52 @@ namespace QuizAppSystem.Controllers
             return BadRequest(ModelState);
         }
 
-       
-
-        private string GenerateJwtToken(User user)
+        private string CreateToken(User user)
         {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JwtSettings:Secret"]));
-            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
-
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(ClaimTypes.NameIdentifier, user.Id)
+            List<Claim> claims = new List<Claim> {
+                new Claim(ClaimTypes.Name, user.UserName),
+                new Claim(ClaimTypes.Role, "Admin"),
+                
             };
 
-            var token = new JwtSecurityToken(
-                issuer: _configuration["JwtSettings:Issuer"],
-                audience: _configuration["JwtSettings:Audience"],
-                claims: claims,
-                expires: DateTime.Now.AddMinutes(Convert.ToDouble(_configuration["JwtSettings:ExpirationInMinutes"])),
-                signingCredentials: credentials
-            );
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
+     _configuration.GetSection("Authentication:ApiSettings:Secret").Value));
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+
+
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+
+            var token = new JwtSecurityToken(
+                    claims: claims,
+                    expires: DateTime.Now.AddDays(1),
+                    signingCredentials: creds
+                );
+
+            var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return jwt;
+
+            //private string GenerateJwtToken(User user)
+            //{
+            //    var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JwtSettings:Secret"]));
+            //    var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            //    var claims = new[]
+            //    {
+            //        new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+            //        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            //        new Claim(ClaimTypes.NameIdentifier, user.Id)
+            //    };
+
+            //    var token = new JwtSecurityToken(
+            //        issuer: _configuration["JwtSettings:Issuer"],
+            //        audience: _configuration["JwtSettings:Audience"],
+            //        claims: claims,
+            //        expires: DateTime.Now.AddMinutes(Convert.ToDouble(_configuration["JwtSettings:ExpirationInMinutes"])),
+            //        signingCredentials: credentials
+            //    );
+
+            //    return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
 
